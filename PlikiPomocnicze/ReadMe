@@ -1,0 +1,36 @@
+Recognize.py # python Recognize.py
+    Właściwy program aplikacji. Aby program działał poprawnie należy w folderze
+    Dokumenty wrzucić następujące pliki:
+    - Ksiazka_Wychodzacych.xlsx
+    - Przepustki.xlsx
+    - Spis_Numerow.txt
+    Przykłady pustych plików znajduję się w folderze 'EmptyFiles'
+    Komunikaty:
+        Komunikat o końcu przepustki:
+            Aby ustawić czasy wyświetlania komunikatów należy wejść w Recognize.py
+            w linii 20 znajduję się tabela 'powiadomienieOKoncuPrzepustki'
+            należy zmienić wpisane tam czasy lub dodać więcej/mniej
+        Komunikat o starej służbie:
+            Aby ustawić czasy wyświetlania komunikatów należy wejść w Recognize.py
+            w linii 21 znajduję się tabela 'powiadomienieOStarejSluzbie'
+            należy zmienić wpisane tam czasy lub dodać więcej/mniej
+            czas powiadomień musi się różnić conajmniej o godzinę
+TakePhotos.py: #python TakePhotos.py
+    Program odpowiada za dodanie zdjęcia do bazy zdjęć znajdujących się w folderze faces
+    jeżeli dodajemy zdjęcie istniejącej osoby należy wybrać jej id i klikać 's' co doda zdjęcie
+    jeżeli dodajemy nową osobę należy wybrać kolejne id i wpisac nazwisko i imię osoby
+    następnie klikamy 's' by dodać zdjęcie
+    aby zakończyć proces należy nacisnąć 'q'
+Train.py: #python Train.py
+    Program odpowiada za naukę sztucznej inteligencji.
+    Wystarczy poprzez terminal wykomać komendę: python Train.py
+    Polecam wykonać komendę przynajmniej dwukrotnie.
+
+Jeżeli chcemy Pracować na czystym/nienauczonym programie należy przekopiować
+puste dokumenty z folderu 'EmptyFiles' -> 'Dokumenty' (poza plikiem id_names.csv)
+Usunąć folderu 'Classifiers' plik 'TrainedLBPH.yml'
+Usunąć foldery w folderze 'faces'
+Wejść w plik id_names.csv i usunąć wszystkie linijki poza linijką 1 (Przykład znajduję się w 'EmptyFiles')
+
+W przypadku zmiany pliku glowneOkno.ui w celu jego poprawnego wgrania należy wykonać komendę: 
+python -m PyQt5.uic.pyuic -x glowneOkno.ui -o glowneOkno_ui.py
