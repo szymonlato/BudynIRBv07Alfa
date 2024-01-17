@@ -15,7 +15,7 @@ password = 'FfqGV3PY'
 
 loginy = ['Login1', 'Login2']
 hasla = ['Haslo1', 'Haslo2']
-
+#aasd
 conn = pymssql.connect(server=server, user=username, password=password, database=database)
 cursor = conn.cursor()
 for i in range(len(loginy)):
