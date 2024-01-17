@@ -12,7 +12,7 @@ pododzial = "ODPion"
 
 try:
     # Przykładowe zapytanie SQL do usunięcia rekordu
-    query = f"DELETE FROM sygnaly_obsluga"
+    query = f"DELETE FROM users WHERE id=21"
 
     # Wykonaj zapytanie SQL
     cursor.execute(query)

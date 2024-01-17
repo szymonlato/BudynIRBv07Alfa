@@ -28,9 +28,19 @@ Train.py: #python Train.py
 
 Jeżeli chcemy Pracować na czystym/nienauczonym programie należy przekopiować
 puste dokumenty z folderu 'EmptyFiles' -> 'Dokumenty' (poza plikiem id_names.csv)
-Usunąć folderu 'Classifiers' plik 'TrainedLBPH.yml'
+Usunąć z folderu 'Classifiers' plik 'TrainedLBPH.yml'
 Usunąć foldery w folderze 'faces'
 Wejść w plik id_names.csv i usunąć wszystkie linijki poza linijką 1 (Przykład znajduję się w 'EmptyFiles')
 
 W przypadku zmiany pliku glowneOkno.ui w celu jego poprawnego wgrania należy wykonać komendę: 
 python -m PyQt5.uic.pyuic -x glowneOkno.ui -o glowneOkno_ui.py
+
+Przypadek gdy nie jesteś programistą, a pythona to widziałeś tylko w zoo:
+
+pip install openpyxl
+pip install pandas
+pip install opencv-python
+pip install PyQt5
+pip install opencv-contrib-python
+pip install reportlab
+pip install numpy

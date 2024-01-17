@@ -8,7 +8,7 @@ password = 'FfqGV3PY'
 conn = pymssql.connect(server=server, user=username, password=password, database=database)
 cursor = conn.cursor()
 
-query = f"SELECT * FROM sygnaly_obsluga"
+query = f"SELECT * FROM users"
 cursor.execute(query)
 rows = cursor.fetchall()
 

@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 import cv2 as cv
 from datetime import datetime
-#import mysql.connector as mysql
 
 if os.path.exists('id_names.csv'):
     id_names = pd.read_csv('id_names.csv')

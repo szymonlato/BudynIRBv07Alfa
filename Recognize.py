@@ -1,6 +1,7 @@
 import threading
 from datetime import datetime, date, timedelta
 from tkinter import *
+import numpy as np
 import openpyxl
 import pandas as pd
 import cv2 as cv
@@ -11,6 +12,8 @@ from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import *
 from PlikiUi.OknoLogowania_ui import *
 from PlikiUi.OknoGlowne_ui import *
+from PlikiUi.OknoAdministratora_ui import *
+from PlikiUi.OknoGeneratoraHasel_ui import *
 import sys
 import pymssql
 import hashlib
@@ -19,6 +22,11 @@ from pathlib import Path
 import shutil
 from openpyxl import Workbook
 from openpyxl.styles import Alignment
+import string
+import random
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Spacer
+from reportlab.lib import colors
 
 # python -m PyQt5.uic.pyuic -x PlikiUi/OknoGlowne.ui -o PlikiUi/OknoGlowne_ui.py
 # C:\Users\kamil\AppData\Local\Programs\Python\Python39\Lib\site-packages\QtDesigner
@@ -35,12 +43,11 @@ faceClassifier = cv.CascadeClassifier('Classifiers/haarface.xml')
 lbph = cv.face.LBPHFaceRecognizer_create(threshold=500)
 lbph.read('Classifiers/TrainedLBPH.yml')
 
-powiadomienieOKoncuPrzepustki = ["23.30.00", "23.45.00"]
+powiadomienieOKoncuPrzepustki = ["05.00.00", "05.15.00"]
 powiadomienieOStarejSluzbie = ["09.00.00"]
 archiwizacjaDokumentu = ["01.00.00"]
 
 pathToIRB = "Dokumenty/Imienne_Rozliczenie_Bojowe.xlsx"
-pathToKsiazka = "Dokumenty/Ksiazka_Wychodzacych.xlsx"
 pathToPrzepustki = "Dokumenty/Przepustki.xlsx"
 pathToNumer = "Dokumenty/Spis_Numerow.txt"
 pathToSluzba = "Dokumenty/Lista_Sluzb.xlsx"
@@ -167,28 +174,12 @@ def JakaPrzepustka(name):
         else:
             return "", "", ""
 
-def ZmienWKsiazce(name, przepustka, stopien):
-    workbook = createSheet(pathToKsiazka)
-    sheet = workbook.active
+def ZmienWKsiazce(name, przepustka):
     if przepustka != "":
         przepustka, od, do = JakaPrzepustka(name)
-        sheet.cell(sheet.max_row + 1, 1).value = str(stopien)
-        sheet.cell(sheet.max_row, 2).value = str(name)
-        sheet.cell(sheet.max_row, 3).value = str(przepustka)
-        sheet.cell(sheet.max_row, 4).value = str(date.today().strftime("%d.%m.%Y"))
-        sheet.cell(sheet.max_row, 5).value = str(datetime.now().strftime("%H.%M"))
-        sheet.cell(sheet.max_row, 6).value = str(do)
-        sheet.cell(sheet.max_row, 7).value = "24.00"
-        workbook.save(pathToKsiazka)
         return przepustka
     else:
-        for i, row in enumerate(sheet.iter_rows(min_row=3, max_row=sheet.max_row, min_col=2, max_col=2)):
-            for cell in row:
-                if cell.value == name and sheet.cell(cell.row, 8).value == None:
-                    sheet.cell(cell.row, 8).value = date.today().strftime("%d.%m.%Y")
-                    sheet.cell(cell.row, 9).value = datetime.now().strftime("%H.%M")
-                    workbook.save(pathToKsiazka)
-                    return ""
+        return ""
 
 def InfoZeWypisalBudyn(zolnierz, jakaPrzepustka):
     oknoKomunikatu = Tk()
@@ -235,7 +226,7 @@ def ZmianaIRB(name):
                     if coWpisac == "":
                         threading.Thread(target=InfoZeBrakMozliwosci, args=(name,)).start()
                         return "!"
-                coWpisac = ZmienWKsiazce(name, coWpisac, sheet.cell(cell.row, cell.column - 1).value)
+                coWpisac = ZmienWKsiazce(name, coWpisac)
                 threading.Thread(target=InfoZeWypisalBudyn, args=(name, coWpisac,)).start()
                 sheet.cell(cell.row, cell.column + 2).value = coWpisac
                 if coWpisac == "":
@@ -271,11 +262,11 @@ def KomunikatKtoNieWrocil(zolnierz):
                 break
 
 def SprawdzenieCzyKoniecPrzepustki():
-    workbench = createSheet(pathToKsiazka)
+    workbench = createSheet(pathToIRB)
     sheet = workbench.active
     for i, row in enumerate(sheet.iter_rows(min_row=3, max_row=sheet.max_row, min_col=5, max_col=6)):
-        if sheet.cell(i + 3, 6).value == date.today().strftime("%d.%m.%Y") and sheet.cell(i + 3, 8).value == None:
-            threading.Thread(target=KomunikatKtoNieWrocil, args=(sheet.cell(i + 3, 2).value,)).start()
+        if sheet.cell(i + 3, 5).value == 'ps':
+            threading.Thread(target=KomunikatKtoNieWrocil, args=(sheet.cell(i + 3, 3).value,)).start()
 
 def ZwrotKtoSluzba():
     workbench = createSheet(pathToIRB)
@@ -304,7 +295,6 @@ def Archiwizacja():
     for i, czas in enumerate(archiwizacjaDokumentu):
         if datetime.now().strftime("%H.%M.%S") == czas:
             shutil.copy2(pathToIRB, f'{pathToArchive}/{formatted_date}/Imienne_Rozliczenie_Bojowe{i}.xlsx')
-            shutil.copy2(pathToKsiazka, f'{pathToArchive}/{formatted_date}/Ksiazka_Wychodzacych{i}.xlsx')
             break
 
 def WykrywanieTwarzy():
@@ -352,7 +342,6 @@ def WykrywanieTwarzy():
                     name = id_names[id_names['id'] == label]['name'].item()
                     cv.rectangle(img, (x, y), (x + w, y + h), (0, 0, 255), 2)
                     cv.putText(img, name, (x, y + h + 30), cv.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255))
-                    # print(str(trust) + " " + str(label))
                     if (time.time() - dur2 > 4):
                         ObslugaUsera(str(name))
                         dur2 = time.time()
@@ -361,6 +350,84 @@ def WykrywanieTwarzy():
         cv.imshow('Obraz z kamery', img)
     camera.release()
     cv.destroyAllWindows()
+
+def dodanieZdjecia():
+    if os.path.exists('id_names.csv'):
+        id_names = pd.read_csv('id_names.csv')
+        id_names = id_names[['id', 'name']]
+    else:
+        id_names = pd.DataFrame(columns=['id', 'name'])
+        id_names.to_csv('id_names.csv')
+
+    if not os.path.exists('faces'):
+        os.makedirs('faces')
+
+    id = int(input('Podaj id nowej lub edytowalnej osoby: '))
+    name = ''
+
+    if id in id_names['id'].values:
+        name = id_names[id_names['id'] == id]['name'].item()
+        print(f'Dzien dobry {name}!!')
+    else:
+        name = input('Wpisz swoje imie: ')
+        os.makedirs(f'faces/{id}')
+        id_names = id_names.append({'id': id, 'name': name}, ignore_index=True)
+        id_names.to_csv('id_names.csv')
+
+    camera = cv.VideoCapture(0)
+    face_classifier = cv.CascadeClassifier('Classifiers/haarface.xml')
+
+    photos_taken = 0
+
+    while (cv.waitKey(1) & 0xFF != ord('q')):
+        _, img = camera.read()
+        grey = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+        faces = face_classifier.detectMultiScale(grey, scaleFactor=1.1, minNeighbors=5, minSize=(50, 50))
+        for (x, y, w, h) in faces:
+            cv.rectangle(img, (x, y), (x + w, y + h), (0, 0, 255), 2)
+
+            face_region = grey[y:y + h, x:x + w]
+            if cv.waitKey(1) & 0xFF == ord('s') and np.average(face_region) > 50:
+                face_img = cv.resize(face_region, (220, 220))
+                img_name = f'face.{id}.{datetime.now().microsecond}.jpeg'
+                cv.imwrite(f'faces/{id}/{img_name}', face_img)
+                photos_taken += 1
+                print(f'Zdjecie nr: {photos_taken}')
+
+        cv.imshow('Face', img)
+    print('Rozpoczecie lekcji')
+    trenowanie()
+    trenowanie()
+    print('Koniec lekcji')
+    camera.release()
+    cv.destroyAllWindows()
+
+def trenowanie():
+    id_names = pd.read_csv('id_names.csv')
+    id_names = id_names[['id', 'name']]
+    lbph = cv.face.LBPHFaceRecognizer_create(threshold=500)
+    def create_train():
+        faces = []
+        labels = []
+        for id in os.listdir('faces'):
+            path = os.path.join('faces', id)
+            try:
+                os.listdir(path)
+            except:
+                continue
+            for img in os.listdir(path):
+                try:
+                    face = cv.imread(os.path.join(path, img))
+                    face = cv.cvtColor(face, cv.COLOR_BGR2GRAY)
+
+                    faces.append(face)
+                    labels.append(int(id))
+                except:
+                    pass
+        return np.array(faces), np.array(labels)
+    faces, labels = create_train()
+    lbph.train(faces, labels)
+    lbph.save('Classifiers/TrainedLBPH.yml')
 
 def haszuj_sha3(tekst):
     sha3_hasz = hashlib.sha3_256()
@@ -401,7 +468,7 @@ class Ui_Logowanie(QtWidgets.QDialog):
             except:
                 self.showAdditionalWindow("Błędny login!", "Błąd")
             digits = ""
-            if letters != 'ODWat' and letters != 'ODPion':
+            if letters != 'ODWat' and letters != 'ODPion' and letters != 'Admin' and letters != 'Komendant':
                 try:
                     digits = int(''.join(filter(str.isdigit, login)))
                 except:
@@ -426,6 +493,19 @@ class Ui_Logowanie(QtWidgets.QDialog):
                 self.close()
                 self.showAdditionalWindow(f'Witam służbę oficera Wat', "Witam :)")
                 Ui_Glowne('ODWat').exec_()
+            elif letters == 'Admin':
+                self.close()
+                self.showAdditionalWindow(f'Witam Admina kochanego', "Witam :)")
+                Ui_PanelAdministratora().exec_()
+            elif letters == 'Komendant':
+                self.close()
+                self.showAdditionalWindow(f'Witam', "Witam :)")
+                Ui_PanelGeneratoraHasel().exec_()
+            elif letters == 'Dowodca':
+                self.close()
+                self.showAdditionalWindow(f'Witam dowódce {str(digits)} Kompani', "Witam :)")
+                threading.Thread(target=dodanieZdjecia).start()
+                self.showAdditionalWindow(f'Wpisz id nowej lub edytowanej osoby.\nJeżeli osoba jest nowa wpisz jej imię i nazwisko\nNaciśnij s by zrobić nowe zdjęcie\nNaciśnij q w celu zakończenia procesu.', "Zasady!")
             else:
                 self.showAdditionalWindow("Błędny login!", "Błąd")
         else:
@@ -646,12 +726,13 @@ class Ui_Glowne(QtWidgets.QDialog):
     def wypelnijComboBox_3(self):
         self.ui.comboBox_3.clear()
         self.ui.comboBox_3.addItem("--", 0)
-        workbench = createSheet(pathToKsiazka)
+        workbench = createSheet(pathToIRB)
         sheet = workbench.active
-        for i, row in enumerate(sheet.iter_rows(min_row=3, max_row=sheet.max_row, min_col=2, max_col=2)):
-            for j, cell in enumerate(row):
-                if sheet.cell(cell.row, cell.column + 7).value == None and sheet.cell(cell.row, cell.column + 1).value != "l4":
-                    self.ui.comboBox_3.addItem(str(cell.value), str(cell.value))
+        zliczanie = 1
+        for i, row in enumerate(sheet.iter_rows(min_row=3, max_row=sheet.max_row, min_col=5, max_col=6)):
+            if sheet.cell(i + 3, 5).value == None and sheet.cell(i + 3, 5).value != "l4":
+                self.ui.comboBox_3.addItem(sheet.cell(i + 3, 3).value, zliczanie)
+                zliczanie += 1
 
     def wypelnijComboBox_4(self):
         self.ui.comboBox_4.clear()
@@ -679,7 +760,7 @@ class Ui_Glowne(QtWidgets.QDialog):
                             sheet.cell(cell.row, cell.column + 2).value = "sl"
                             sheet.cell(cell.row, cell.column + 1).value = "nieobecny"
                             self.ui.label_13.setText(osobaDoZmiany + " objeła służbę.")
-                        elif sheet.cell(cell.row, cell.column + 2).value == "Sł":
+                        elif sheet.cell(cell.row, cell.column + 2).value == "sl":
                             sheet.cell(cell.row, cell.column + 2).value = ""
                             sheet.cell(cell.row, cell.column + 1).value = "obecny"
                             self.ui.label_13.setText(osobaDoZmiany + " zdała służbę.")
@@ -716,26 +797,6 @@ class Ui_Glowne(QtWidgets.QDialog):
                     self.ZmienWKsiazce(name, "", sheet.cell(cell.row, cell.column - 1).value, doKiedy)
                     self.ZmienWKsiazce(name, "l4", sheet.cell(cell.row, cell.column - 1).value, doKiedy)
                     workbook.save(pathToIRB)
-
-    def ZmienWKsiazce(self, name, przepustka, stopien, doKiedy):
-        workbook = createSheet(pathToKsiazka)
-        sheet = workbook.active
-        if przepustka != "":
-            sheet.cell(sheet.max_row + 1, 1).value = str(stopien)
-            sheet.cell(sheet.max_row, 2).value = str(name)
-            sheet.cell(sheet.max_row, 3).value = str(przepustka)
-            sheet.cell(sheet.max_row, 4).value = str(date.today().strftime("%d.%m.%Y"))
-            sheet.cell(sheet.max_row, 5).value = str(datetime.now().strftime("%H.%M"))
-            sheet.cell(sheet.max_row, 6).value = str(doKiedy)
-            sheet.cell(sheet.max_row, 7).value = "24.00"
-            workbook.save(pathToKsiazka)
-        else:
-            for i, row in enumerate(sheet.iter_rows(min_row=3, max_row=sheet.max_row, min_col=2, max_col=2)):
-                for cell in row:
-                    if cell.value == name and sheet.cell(cell.row, 8).value == None:
-                        sheet.cell(cell.row, 8).value = date.today().strftime("%d.%m.%Y")
-                        sheet.cell(cell.row, 9).value = datetime.now().strftime("%H.%M")
-                        workbook.save(pathToKsiazka)
 
     def Aktualizacja(self):
         self.wypelnijComboBox_3()
@@ -810,29 +871,6 @@ class Ui_Glowne(QtWidgets.QDialog):
                 f"{str(ileL4)}{spaces * (6 - len(str(ileL4)))}{str(ileSl)}{spaces * (6 - len(str(ileSl)))}"
         formatted_line += f'<pre><b><span style="font-size: 12pt;">{linia}</span></b></pre>'
         self.ui.textBrowser_3.insertHtml(formatted_line)
-        workbench2 = createSheet(pathToKsiazka)
-        sheet2 = workbench2.active
-        formatted_line = f'<pre><b>             Dane Żołnierza                      Termin od                 Termin do                   Powrót</b></pre>'
-        formatted_line += f'<pre><b>                                           Od            Od          Do            Do          Kiedy         Kiedy</b></pre>'
-        formatted_line += f'<pre><b>Stopień.  Nazwisko i imię.    Przepustka.  (data).       (godzina).  (data).       (godzina).  (data).       (godzina).</b></pre>'
-        for i, row in enumerate(sheet2.iter_rows(min_row=3, max_row=sheet2.max_row, min_col=1, max_col=9)):
-            linia = ""
-            for j, cell in enumerate(row):
-                text = str(cell.value)
-                if cell.value == None:
-                    text = "  "
-                spaces = ""
-                if j == 0:
-                    spaces = "&nbsp;" * (10 - len(text))
-                elif j == 1:
-                    spaces = "&nbsp;" * (20 - len(text))
-                elif j == 2 or j == 3 or j == 5 or j == 7:
-                    spaces = "&nbsp;" * (14 - len(text))
-                elif j == 4 or j == 6 or j == 8:
-                    spaces = "&nbsp;" * (12 - len(text))
-                linia += f"{text}{spaces}"
-            formatted_line += f'<pre><b>{linia}</b></pre>'
-        self.ui.textBrowser_2.insertHtml(formatted_line)
 
     def WyslijKomunikat(self, userName, trescKomunikatu):
         if trescKomunikatu == "" or trescKomunikatu == "--":
@@ -918,6 +956,476 @@ class Ui_Glowne(QtWidgets.QDialog):
         except Exception as e:
             print(f"Wystąpił błąd podczas usuwania pliku: {e}")
         self.close()
+
+class Ui_PanelAdministratora(QtWidgets.QDialog):
+    def __init__(self):
+        super(Ui_PanelAdministratora, self).__init__()
+        self.setWindowIcon(QtGui.QIcon("ikona.png"))
+        self.initUI()
+        self.cieniowanie()
+        self.wypelnijComboBoxy()
+
+    def initUI(self):
+        uic.loadUi('PlikiUi/OknoAdministratora.ui', self)
+        self.ui = Ui_Dialog4()
+        self.ui.setupUi(self)
+        self.ui.button_group = QButtonGroup()
+        self.ui.button_group.addButton(self.ui.radioButton_4)
+        self.ui.button_group.addButton(self.ui.radioButton_5)
+        self.ui.button_group.addButton(self.ui.radioButton_10)
+        self.ui.button_group.addButton(self.ui.radioButton_7)
+        self.ui.button_group.addButton(self.ui.radioButton_6)
+        self.ui.button_group.addButton(self.ui.radioButton_8)
+        self.ui.button_group.addButton(self.ui.radioButton_9)
+        self.ui.button_group2 = QButtonGroup()
+        self.ui.button_group2.addButton(self.ui.radioButton)
+        self.ui.button_group2.addButton(self.ui.radioButton_2)
+        self.ui.button_group2.addButton(self.ui.radioButton_3)
+        self.ui.radioButton_4.clicked.connect(self.cieniowanie)
+        self.ui.radioButton_5.clicked.connect(self.cieniowanie)
+        self.ui.radioButton_6.clicked.connect(self.cieniowanie)
+        self.ui.radioButton_7.clicked.connect(self.cieniowanie)
+        self.ui.radioButton_8.clicked.connect(self.cieniowanie)
+        self.ui.radioButton_9.clicked.connect(self.cieniowanie)
+        self.ui.radioButton_10.clicked.connect(self.cieniowanie)
+        self.ui.pushButton.clicked.connect(self.wyswietlListe)
+        self.ui.pushButton_2.clicked.connect(self.wykonaj)
+
+    def cieniowanie(self):
+        self.wycieniujWszystkie()
+        if self.ui.radioButton_4.isChecked():
+            #Dodaj osobe
+            self.ui.comboBox.setEnabled(True)
+            self.ui.comboBox_2.setEnabled(True)
+            self.ui.lineEdit.setEnabled(True)
+            self.ui.label_2.setEnabled(True)
+            self.ui.label_3.setEnabled(True)
+            self.ui.label_4.setEnabled(True)
+        elif self.ui.radioButton_5.isChecked():
+            #Usuń osobę
+            self.ui.comboBox_3.setEnabled(True)
+            self.ui.label_5.setEnabled(True)
+        elif self.ui.radioButton_10.isChecked():
+            #Edytuj osobę
+            self.ui.comboBox_4.setEnabled(True)
+            self.ui.comboBox_5.setEnabled(True)
+            self.ui.comboBox_6.setEnabled(True)
+            self.ui.lineEdit_2.setEnabled(True)
+            self.ui.label_10.setEnabled(True)
+            self.ui.label_7.setEnabled(True)
+            self.ui.label_8.setEnabled(True)
+            self.ui.label_9.setEnabled(True)
+        elif self.ui.radioButton_7.isChecked():
+            #dodaj kompanię
+            self.ui.lineEdit_3.setEnabled(True)
+            self.ui.comboBox_7.setEnabled(True)
+            self.ui.label_6.setEnabled(True)
+            self.ui.label_11.setEnabled(True)
+        elif self.ui.radioButton_6.isChecked():
+            #usuń kompanię
+            self.ui.comboBox_8.setEnabled(True)
+            self.ui.label_12.setEnabled(True)
+        elif self.ui.radioButton_8.isChecked():
+            #dodaj batalion
+            self.ui.lineEdit_4.setEnabled(True)
+            self.ui.label_13.setEnabled(True)
+        elif self.ui.radioButton_9.isChecked():
+            #usuń batalion
+            self.ui.comboBox_9.setEnabled(True)
+            self.ui.label_14.setEnabled(True)
+
+    def wycieniujWszystkie(self):
+        self.ui.comboBox.setEnabled(False)
+        self.ui.comboBox_2.setEnabled(False)
+        self.ui.lineEdit.setEnabled(False)
+        self.ui.comboBox_3.setEnabled(False)
+        self.ui.comboBox_4.setEnabled(False)
+        self.ui.comboBox_5.setEnabled(False)
+        self.ui.comboBox_6.setEnabled(False)
+        self.ui.lineEdit_2.setEnabled(False)
+        self.ui.lineEdit_3.setEnabled(False)
+        self.ui.comboBox_7.setEnabled(False)
+        self.ui.comboBox_8.setEnabled(False)
+        self.ui.lineEdit_4.setEnabled(False)
+        self.ui.comboBox_9.setEnabled(False)
+        self.ui.label_2.setEnabled(False)
+        self.ui.label_3.setEnabled(False)
+        self.ui.label_4.setEnabled(False)
+        self.ui.label_5.setEnabled(False)
+        self.ui.label_6.setEnabled(False)
+        self.ui.label_7.setEnabled(False)
+        self.ui.label_8.setEnabled(False)
+        self.ui.label_9.setEnabled(False)
+        self.ui.label_10.setEnabled(False)
+        self.ui.label_11.setEnabled(False)
+        self.ui.label_12.setEnabled(False)
+        self.ui.label_13.setEnabled(False)
+        self.ui.label_14.setEnabled(False)
+
+    def wypelnijComboBoxy(self):
+        conn = pymssql.connect(server=server, user=username, password=password, database=database)
+        cursor = conn.cursor()
+        query = f"SELECT id FROM Osoba"
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        self.ui.comboBox.clear()
+        self.ui.comboBox.addItem("--", 0)
+        self.ui.comboBox.addItem("szer.", 1)
+        self.ui.comboBox.addItem("st.szer.", 2)
+        self.ui.comboBox.addItem("st.szer.spec.", 3)
+        self.ui.comboBox.addItem("kpr.", 4)
+        self.ui.comboBox.addItem("st.kpr.", 5)
+        self.ui.comboBox.addItem("plut.", 6)
+        self.ui.comboBox.addItem("sierż.", 7)
+        self.ui.comboBox.addItem("st.sierż.", 8)
+        self.ui.comboBox.addItem("mł.chor.", 9)
+        self.ui.comboBox.addItem("chor.", 10)
+        self.ui.comboBox.addItem("st.chor.", 11)
+        self.ui.comboBox.addItem("st.chor.sztab.", 12)
+        self.ui.comboBox.addItem("ppor.", 13)
+        self.ui.comboBox.addItem("por.", 14)
+        self.ui.comboBox.addItem("kpt.", 15)
+        self.ui.comboBox.addItem("mjr.", 16)
+        self.ui.comboBox.addItem("ppłk.", 17)
+        self.ui.comboBox.addItem("płk.", 18)
+        self.ui.comboBox.addItem("szer.pchor.", 19)
+        self.ui.comboBox.addItem("st.szer.pchor.", 20)
+        self.ui.comboBox.addItem("st.szer.spec.pchor.", 21)
+        self.ui.comboBox.addItem("kpr.pchor.", 22)
+        self.ui.comboBox.addItem("st.kpr.pchor.", 23)
+        self.ui.comboBox.addItem("plut.pchor.", 24)
+        self.ui.comboBox.addItem("sierż.pchor.", 25)
+        self.ui.comboBox_5.addItem("--", 0)
+        self.ui.comboBox_5.addItem("szer.", 1)
+        self.ui.comboBox_5.addItem("st.szer.", 2)
+        self.ui.comboBox_5.addItem("st.szer.spec.", 3)
+        self.ui.comboBox_5.addItem("kpr.", 4)
+        self.ui.comboBox_5.addItem("st.kpr.", 5)
+        self.ui.comboBox_5.addItem("plut.", 6)
+        self.ui.comboBox_5.addItem("sierż.", 7)
+        self.ui.comboBox_5.addItem("st.sierż.", 8)
+        self.ui.comboBox_5.addItem("mł.chor.", 9)
+        self.ui.comboBox_5.addItem("chor.", 10)
+        self.ui.comboBox_5.addItem("st.chor.", 11)
+        self.ui.comboBox_5.addItem("st.chor.sztab.", 12)
+        self.ui.comboBox_5.addItem("ppor.", 13)
+        self.ui.comboBox_5.addItem("por.", 14)
+        self.ui.comboBox_5.addItem("kpt.", 15)
+        self.ui.comboBox_5.addItem("mjr.", 16)
+        self.ui.comboBox_5.addItem("ppłk.", 17)
+        self.ui.comboBox_5.addItem("płk.", 18)
+        self.ui.comboBox_5.addItem("szer.pchor.", 19)
+        self.ui.comboBox_5.addItem("st.szer.pchor.", 20)
+        self.ui.comboBox_5.addItem("st.szer.spec.pchor.", 21)
+        self.ui.comboBox_5.addItem("kpr.pchor.", 22)
+        self.ui.comboBox_5.addItem("st.kpr.pchor.", 23)
+        self.ui.comboBox_5.addItem("plut.pchor.", 24)
+        self.ui.comboBox_5.addItem("sierż.pchor.", 25)
+        self.ui.comboBox_3.clear()
+        self.ui.comboBox_4.clear()
+        for row in rows:
+            self.ui.comboBox_3.addItem(format(row[0]), int(format(row[0])) - 1)
+            self.ui.comboBox_4.addItem(format(row[0]), int(format(row[0])) - 1)
+        query = f"SELECT * FROM Batalion"
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        self.ui.comboBox_7.clear()
+        self.ui.comboBox_9.clear()
+        for row in rows:
+            self.ui.comboBox_7.addItem(format(row[1]), int(format(row[0])) - 1)
+            self.ui.comboBox_9.addItem(format(row[0]), int(format(row[0])) - 1)
+        query = f"SELECT id, numer_kompanii FROM Kompania"
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        self.ui.comboBox_2.clear()
+        self.ui.comboBox_6.clear()
+        self.ui.comboBox_8.clear()
+        for row in rows:
+            self.ui.comboBox_2.addItem(format(row[1]), int(format(row[0])) - 1)
+            self.ui.comboBox_6.addItem(format(row[1]), int(format(row[0])) - 1)
+            self.ui.comboBox_8.addItem(format(row[0]), int(format(row[0])) - 1)
+
+    def wyswietlListe(self):
+        conn = pymssql.connect(server=server, user=username, password=password, database=database)
+        cursor = conn.cursor()
+        self.ui.textBrowser.clear()
+        if self.ui.radioButton.isChecked():
+            #Lista osób
+            query = f"SELECT * FROM Osoba"
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            linia = f"id   stopień   imie_i_nazwisko     powód   id_kompani\n"
+            self.ui.textBrowser.insertHtml(f'<pre><b>{linia}</b></pre>')
+            linia = f"-----------------------------------------------------\n"
+            self.ui.textBrowser.insertHtml(f'<pre><b>{linia}</b></pre>')
+            for row in rows:
+                linia = ""
+                spaces = "&nbsp;" * (5 - len(format(row[0])))
+                linia += f"{format(row[0])}{spaces}"
+                spaces = "&nbsp;" * (10 - len(format(row[1])))
+                linia += f"{format(row[1])}{spaces}"
+                spaces = "&nbsp;" * (20 - len(format(row[2])))
+                linia += f"{format(row[2])}{spaces}"
+                spaces = "&nbsp;" * (8 - len(format(row[4])))
+                linia += f"{format(row[4])}{spaces}"
+                spaces = "&nbsp;" * (5 - len(format(row[5])))
+                linia += f"{format(row[5])}{spaces}\n"
+                self.ui.textBrowser.insertHtml(f'<pre><b>{linia}</b></pre>')
+        elif self.ui.radioButton_2.isChecked():
+            #Lista kompanii
+            query = f"SELECT * FROM Kompania"
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            linia = f"id   nazwa_kompani  id_batalionu\n"
+            self.ui.textBrowser.insertHtml(f'<pre><b>{linia}</b></pre>')
+            linia = f"-----------------------------------------------------\n"
+            self.ui.textBrowser.insertHtml(f'<pre><b>{linia}</b></pre>')
+            for row in rows:
+                linia = ""
+                spaces = "&nbsp;" * (5 - len(format(row[0])))
+                linia += f"{format(row[0])}{spaces}"
+                spaces = "&nbsp;" * (15 - len(format(row[1])))
+                linia += f"{format(row[1])}{spaces}"
+                spaces = "&nbsp;" * (5 - len(format(row[2])))
+                linia += f"{format(row[2])}{spaces}\n"
+                self.ui.textBrowser.insertHtml(f'<pre><b>{linia}</b></pre>')
+        elif self.ui.radioButton_3.isChecked():
+            #Lista batalionów
+            query = f"SELECT * FROM Batalion"
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            linia = f"id   nazwa_batalionu\n"
+            self.ui.textBrowser.insertHtml(f'<pre><b>{linia}</b></pre>')
+            linia = f"-----------------------------------------------------\n"
+            self.ui.textBrowser.insertHtml(f'<pre><b>{linia}</b></pre>')
+            for row in rows:
+                linia = ""
+                spaces = "&nbsp;" * (5 - len(format(row[0])))
+                linia += f"{format(row[0])}{spaces}"
+                spaces = "&nbsp;" * (15 - len(format(row[1])))
+                linia += f"{format(row[1])}{spaces}\n"
+                self.ui.textBrowser.insertHtml(f'<pre><b>{linia}</b></pre>')
+
+    def wykonaj(self):
+        conn = pymssql.connect(server=server, user=username, password=password, database=database)
+        cursor = conn.cursor()
+        if self.ui.radioButton_4.isChecked():
+            # Dodaj osobe
+            query = f"SELECT * FROM Kompania"
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            nowe_dane = {
+                'id': self.ui.comboBox_3.count() + 1,
+                'stopien': self.ui.comboBox.currentText(),
+                'imie_nazwisko': self.ui.lineEdit.text(),
+                'stan': 'obecny',
+                'powod': '',
+                'kompania_id': ''
+            }
+            for row in rows:
+                if format(row[1]) == self.ui.comboBox_2.currentText():
+                    nowe_dane['kompania_id'] = format(row[0])
+                    break
+            query = f"INSERT INTO Osoba ({', '.join(nowe_dane.keys())}) VALUES ({', '.join(['%s'] * len(nowe_dane))})"
+            values = tuple(nowe_dane.values())
+            cursor.execute(query, values)
+            conn.commit()
+            cursor.close()
+            conn.close()
+            WyswietlenieKomunikatu2(f"Dodałem Osobę o podanych wartościach:\n {nowe_dane['id']} {nowe_dane['stopien']} {nowe_dane['imie_nazwisko']} {nowe_dane['kompania_id']}")
+        elif self.ui.radioButton_5.isChecked():
+            try:
+                query = f"DELETE FROM Osoba WHERE id={self.ui.comboBox_3.currentText()}"
+                cursor.execute(query)
+                conn.commit()
+                WyswietlenieKomunikatu2(f"Usunąłem Osobę o id {self.ui.comboBox_3.currentText()}")
+            except Exception as e:
+                print(f"Błąd: {e}")
+                conn.rollback()
+            finally:
+                cursor.close()
+                conn.close()
+        elif self.ui.radioButton_10.isChecked():
+            query = f"SELECT * FROM Kompania"
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            noweID = 1
+            for row in rows:
+                if format(row[1]) == self.ui.comboBox_6.currentText():
+                    noweID = format(row[0])
+                    break
+            try:
+                zapytanie = f"UPDATE Osoba SET stopien='{self.ui.comboBox_5.currentText()}', kompania_id={noweID}, imie_nazwisko='{self.ui.lineEdit_2.text()}' WHERE id={self.ui.comboBox_4.currentText()}"
+                cursor.execute(zapytanie)
+                conn.commit()
+            except Exception as e:
+                print(f'Błąd: {e}')
+            finally:
+                conn.close()
+            WyswietlenieKomunikatu2(f"Edytowałem Osobe o id {self.ui.comboBox_4.currentText()}")
+        elif self.ui.radioButton_7.isChecked():
+            query = f"SELECT * FROM Batalion"
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            nowe_dane = {
+                'id': self.ui.comboBox_8.count() + 1,
+                'numer_kompanii': self.ui.lineEdit_3.text(),
+                'batalion_id': ''
+            }
+            for row in rows:
+                if format(row[1]) == self.ui.comboBox_7.currentText():
+                    nowe_dane['batalion_id'] = format(row[0])
+                    break
+            query = f"INSERT INTO Kompania ({', '.join(nowe_dane.keys())}) VALUES ({', '.join(['%s'] * len(nowe_dane))})"
+            values = tuple(nowe_dane.values())
+            cursor.execute(query, values)
+            conn.commit()
+            cursor.close()
+            conn.close()
+            WyswietlenieKomunikatu2(f"Dodałem Kompanię o podanych wartościach:\n {nowe_dane['id']} {nowe_dane['numer_kompanii']} {nowe_dane['batalion_id']}")
+        elif self.ui.radioButton_6.isChecked():
+            try:
+                query = f"DELETE FROM Kompania WHERE id={self.ui.comboBox_8.currentText()}"
+                cursor.execute(query)
+                conn.commit()
+                WyswietlenieKomunikatu2(f"Usunąłem Kompanię o id {self.ui.comboBox_8.currentText()}")
+            except Exception as e:
+                print(f"Błąd: {e}")
+                conn.rollback()
+            finally:
+                cursor.close()
+                conn.close()
+        elif self.ui.radioButton_8.isChecked():
+            query = f"INSERT INTO Batalion (id, numer_batalionu) VALUES {self.ui.comboBox_9.count() + 1, self.ui.lineEdit_4.text()}"
+            cursor.execute(query)
+            conn.commit()
+            cursor.close()
+            conn.close()
+            WyswietlenieKomunikatu2(f"Dodałem Batalion o podanych wartościach:\n {self.ui.comboBox_9.count() + 1}, {self.ui.lineEdit_4.text()}")
+        elif self.ui.radioButton_9.isChecked():
+            try:
+                query = f"DELETE FROM Batalion WHERE id={self.ui.comboBox_9.currentText()}"
+                cursor.execute(query)
+                conn.commit()
+                WyswietlenieKomunikatu2(f"Usunąłem Batalion o id {self.ui.comboBox_9.currentText()}")
+            except Exception as e:
+                print(f"Błąd: {e}")
+                conn.rollback()
+            finally:
+                cursor.close()
+                conn.close()
+        self.wypelnijComboBoxy()
+
+class Ui_PanelGeneratoraHasel(QtWidgets.QDialog):
+    def __init__(self):
+        super(Ui_PanelGeneratoraHasel, self).__init__()
+        self.setWindowIcon(QtGui.QIcon("ikona.png"))
+        self.initUI()
+
+    def initUI(self):
+        uic.loadUi('PlikiUi/OknoGeneratoraHasel.ui', self)
+        self.ui = Ui_Dialog5()
+        self.ui.setupUi(self)
+        self.ui.pushButton.clicked.connect(self.pobranieLoginow)
+
+    def closeEvent(self, event):
+        self.remove_file()
+
+    def remove_file(self):
+        file_path = "PlikiPomocnicze/loginy_hasla.pdf"
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                print(f"Usunięto plik: {file_path}")
+            else:
+                print(f"Plik nie istnieje: {file_path}")
+        except Exception as e:
+            QMessageBox.warning(self, 'Błąd', f'Nie udało się usunąć pliku: {e}')
+
+    def pobranieLoginow(self):
+        loginy = []
+        conn = pymssql.connect(server=server, user=username, password=password, database=database)
+        cursor = conn.cursor()
+        query = f"SELECT numer_batalionu FROM Batalion"
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        for row in rows:
+            loginy.append(format(row[0]))
+        query = f"SELECT numer_kompanii FROM Kompania"
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        for row in rows:
+            loginy.append(format(row[0]))
+        loginy.append('ODPion')
+        loginy.append('ODWat')
+        hasla = generowanieHasel(loginy)
+        create_pdf("PlikiPomocnicze/loginy_hasla.pdf", loginy, hasla)
+        self.updateBazyDanych(loginy, hasla)
+
+    def updateBazyDanych(self, loginy, hasla):
+        conn = pymssql.connect(server=server, user=username, password=password, database=database)
+        cursor = conn.cursor()
+        for i in range(len(loginy)):
+            try:
+                update_query = f"UPDATE users SET password = %s WHERE username = %s"
+                cursor.execute(update_query, (haszuj_sha3(hasla[i]), haszuj_sha3(loginy[i])))
+                conn.commit()
+            except Exception as e:
+                print(f"Błąd aktualizacji danych: {e}")
+        conn.close()
+
+def create_pdf(file_path, logins, passwords):
+    logins2, passwords2 = insert_empty_elements(logins, passwords)
+    pdf_doc = SimpleDocTemplate(file_path, pagesize=letter)
+    data = [["Login", "Haslo"]]
+    for login, password in zip(logins2, passwords2):
+        data.append([login, password])
+    table = Table(data, colWidths=[120, 120])
+    style = TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                        ('BACKGROUND', (0, 1), (-1, -1), colors.beige)])
+    table.setStyle(style)
+    for i in range(1, len(data)):
+        table.setStyle([('AFTER', (0, i), (-1, i), 12)])
+    story = [table]
+    story.append(Spacer(1, 12))
+    pdf_doc.build(story)
+
+def WyswietlenieKomunikatu2(tekst):
+    oknoKomunikatu = Tk()
+    oknoKomunikatu.title("Komunikat")
+    x = (oknoKomunikatu.winfo_screenwidth() - 600) // 2
+    y = (oknoKomunikatu.winfo_screenheight() - 60) // 2
+    oknoKomunikatu.geometry('{}x{}+{}+{}'.format(600, 60, x, y))
+    etykieta = Label(oknoKomunikatu, text=f"{tekst}", justify=CENTER, font=30, fg="red")
+    etykieta.pack()
+    oknoKomunikatu.mainloop()
+def generowanieHasel(loginy):
+    return [generuj_haslo(16) for _ in range(len(loginy))]
+def generuj_haslo(dlugosc):
+    znaki = string.ascii_letters + string.digits + string.punctuation
+    return ''.join(random.choice(znaki) for _ in range(dlugosc))
+def haszuj_sha3(tekst):
+    sha3_hasz = hashlib.sha3_256()
+    sha3_hasz.update(tekst.encode('utf-8'))
+    zhashowany_wynik = sha3_hasz.hexdigest()
+    return zhashowany_wynik
+def insert_empty_elements(logins, passwords):
+    new_logins = []
+    new_passwords = []
+    for login, password in zip(logins, passwords):
+        new_logins.append(login)
+        new_passwords.append(password)
+        new_logins.append("------------------------------")
+        new_passwords.append("------------------------------")
+    if new_logins:
+        new_logins.pop()
+    if new_passwords:
+        new_passwords.pop()
+    return new_logins, new_passwords
 
 app = QApplication(sys.argv)
 ex = Ui_Logowanie()
