@@ -16,5 +16,4 @@ def generuj_i_zapisz_liste_osob(ilosc_osob, klucz, nazwa_pliku="Dokumenty/Spis_N
             indeksOsoby += 1
             plik.write(osoba)
 
-# Przykład użycia funkcji do wygenerowania i zapisania listy 19 osób do pliku "lista_osob.txt"
 generuj_i_zapisz_liste_osob(60, "ABC")
